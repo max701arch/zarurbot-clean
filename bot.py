@@ -1,6 +1,7 @@
 import os
 import logging
 import requests
+import asyncio
 from flask import Flask, request
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
@@ -10,7 +11,7 @@ from telegram.ext import (
 # Flask app
 flask_app = Flask(__name__)
 
-# Tokeni olish
+# Token
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     raise Exception("❌ BOT_TOKEN topilmadi! Render environmentdan tekshir!")
@@ -104,7 +105,7 @@ app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler)
 @flask_app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), app.bot)
-    app.process_update(update)   # ✅ To‘g‘rilandi
+    asyncio.run(app.process_update(update))  # ✅ Asinxron ishlatish kerak
     return "OK", 200
 
 @flask_app.route("/")

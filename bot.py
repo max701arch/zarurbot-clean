@@ -1,6 +1,7 @@
 import os
 import logging
 import requests
+from flask import Flask
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -9,8 +10,16 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
+import threading
 
-# Tokenni faqat Environment Variable orqali olish
+# 🔹 Flask server (Render port ochilishini ta’minlash uchun)
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "✅ Bot ishlayapti!"
+
+# 🔹 Token environment’dan olinadi
 TOKEN = os.getenv("BOT_TOKEN")
 
 logging.basicConfig(
@@ -18,30 +27,31 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# START komandasi
+# /start komandasi
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reply_keyboard = [["💵 Valyuta kursi", "☁️ Ob-havo"], ["🧮 Kalkulyator"]]
+    reply_keyboard = [["💵 Valyuta kursi", "🌤 Ob-havo"]]
     await update.message.reply_text(
-        "Salom! Men foydali botman 🤖\nTanlang:",
+        "Salom! Men foydali botman 🤖\nQuyidagidan birini tanlang:",
         reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
     )
 
-# Ob-havo
+# 🌤 Ob-havo komandasi
 async def weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🏙️ Qaysi shahar ob-havosini bilmoqchisiz?")
+    await update.message.reply_text("🌍 Qaysi shahar ob-havosini bilmoqchisiz?")
     context.user_data["weather_mode"] = True
 
 async def handle_weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    city = update.message.text
-    try:
-        url = f"http://wttr.in/{city}?format=%C+%t"
-        response = requests.get(url, timeout=5)
-        await update.message.reply_text(f"☁️ Ob-havo: {response.text}")
-    except Exception:
-        await update.message.reply_text("❌ Ob-havoni olishda xatolik!")
-    context.user_data["weather_mode"] = False
+    if context.user_data.get("weather_mode"):
+        city = update.message.text
+        try:
+            url = f"http://wttr.in/{city}?format=%C+%t"
+            response = requests.get(url, timeout=5)
+            await update.message.reply_text(f"🌤 {city} ob-havosi: {response.text}")
+        except Exception:
+            await update.message.reply_text("❌ Ob-havoni olishda muammo!")
+        context.user_data["weather_mode"] = False
 
-# Valyuta kursi
+# 💵 Valyuta komandasi
 async def currency(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         url = "https://cbu.uz/oz/arkhiv-kursov-valyut/json/"
@@ -53,62 +63,27 @@ async def currency(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"💵 1 USD = {usd} so'm\n"
             f"💶 1 EUR = {eur} so'm\n"
-            f"💴 1 RUB = {rub} so'm"
+            f"₽ 1 RUB = {rub} so'm"
         )
     except Exception:
-        await update.message.reply_text("❌ Valyuta kursini olishda xatolik")
+        await update.message.reply_text("❌ Valyuta kursini olishda muammo!")
 
-# Kalkulyator
-async def calc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🧮 Masalani yozing (masalan: 25*30)")
-    context.user_data["calc_mode"] = True
+# 🔹 Botni ishga tushirish
+def run_bot():
+    application = Application.builder().token(TOKEN).build()
 
-async def handle_calc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.user_data.get("calc_mode"):
-        return
-    text = update.message.text
-    try:
-        if all(ch in "0123456789+-*/. " for ch in text):
-            result = eval(text)
-            await update.message.reply_text(f"✅ Natija: {result}")
-        else:
-            await update.message.reply_text("❌ Faqat son va + - * / ishlating!")
-    except Exception:
-        await update.message.reply_text("❌ Noto‘g‘ri ifoda")
-    context.user_data["calc_mode"] = False
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("weather", weather))
+    application.add_handler(CommandHandler("currency", currency))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_weather))
 
-# Bosh menu handler
-async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    if text == "💵 Valyuta kursi":
-        await currency(update, context)
-    elif text == "☁️ Ob-havo":
-        await weather(update, context)
-    elif text == "🧮 Kalkulyator":
-        await calc(update, context)
-    else:
-        if context.user_data.get("weather_mode"):
-            await handle_weather(update, context)
-        elif context.user_data.get("calc_mode"):
-            await handle_calc(update, context)
-
-# Asosiy funksiya
-def main():
-    if not TOKEN:
-        print("❌ BOT_TOKEN topilmadi! Render environmentni tekshiring.")
-        return
-
-    app = Application.builder().token(TOKEN).build()
-
-    # Handlers qo‘shish
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("weather", weather))
-    app.add_handler(CommandHandler("currency", currency))
-    app.add_handler(CommandHandler("calc", calc))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
-
-    print("✅ Bot ishga tushmoqda...")
-    app.run_polling()
+    application.run_polling()
 
 if __name__ == "__main__":
-    main()
+    # Flask serverni alohida threadda ishga tushiramiz
+    threading.Thread(
+        target=lambda: app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+    ).start()
+
+    # Telegram botni ishga tushiramiz
+    run_bot()

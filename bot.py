@@ -1,6 +1,7 @@
 import os
 import logging
 from flask import Flask, request
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, Dispatcher
 
